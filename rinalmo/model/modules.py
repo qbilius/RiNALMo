@@ -2,9 +2,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from rinalmo.model.attention import MultiHeadSelfAttention, FlashMultiHeadSelfAttention
+from rinalmo.model.attention import MultiHeadSelfAttention  # , FlashMultiHeadSelfAttention
 
 import torch.utils.checkpoint as checkpoint
+
 
 class TokenDropout(nn.Module):
     def __init__(
@@ -35,6 +36,7 @@ class TokenDropout(nn.Module):
 
         return x
 
+
 class Transformer(nn.Module):
     def __init__(self, embed_dim, num_blocks, num_heads, use_rot_emb=True, attn_qkv_bias=False, transition_dropout=0.0, attention_dropout=0.0, residual_dropout=0.0, transition_factor=4, use_flash_attn=False):
         super().__init__()
@@ -56,12 +58,12 @@ class Transformer(nn.Module):
 
         for block in self.blocks:
             x, attn = checkpoint.checkpoint(
-                block, 
+                block,
                 x,
                 key_padding_mask=key_padding_mask,
                 need_attn_weights=need_attn_weights,
                 use_reentrant=False
-                )
+            )
 
             if need_attn_weights:
                 attn_weights.append(attn)
@@ -69,6 +71,7 @@ class Transformer(nn.Module):
         x = self.final_layer_norm(x)
 
         return x, attn_weights
+
 
 class SwiGLU(nn.Module):
     """
@@ -78,6 +81,7 @@ class SwiGLU(nn.Module):
     but by the Swish definition it is learnable parameter otherwise
     it is SiLU activation function (https://paperswithcode.com/method/swish)
     """
+
     def __init__(self, size_in, size_out, beta_is_learnable=True, bias=True):
         """
         Args:
@@ -89,30 +93,31 @@ class SwiGLU(nn.Module):
         super().__init__()
         self.linear = nn.Linear(size_in, size_out, bias=bias)
         self.linear_gate = nn.Linear(size_in, size_out, bias=bias)
-        self.beta = nn.Parameter(torch.ones(1), requires_grad=beta_is_learnable)  
+        self.beta = nn.Parameter(torch.ones(1), requires_grad=beta_is_learnable)
 
     def forward(self, x):
         linear_out = self.linear(x)
         swish_out = linear_out * torch.sigmoid(self.beta * linear_out)
         return swish_out * self.linear_gate(x)
 
+
 class TransformerBlock(nn.Module):
     def __init__(self, embed_dim, num_heads, use_rot_emb=True, attn_qkv_bias=False, transition_dropout=0.0, attention_dropout=0.0, residual_dropout=0.0, transition_factor=4, use_flash_attn=False):
         super().__init__()
-        
+
         self.use_flash_attn = use_flash_attn
 
         if use_flash_attn:
             self.mh_attn = FlashMultiHeadSelfAttention(embed_dim, num_heads, attention_dropout, causal=False, use_rot_emb=use_rot_emb, bias=attn_qkv_bias)
         else:
             self.mh_attn = MultiHeadSelfAttention(embed_dim, num_heads, attention_dropout, use_rot_emb, attn_qkv_bias)
-        
+
         self.attn_layer_norm = nn.LayerNorm(embed_dim)
 
         self.transition = nn.Sequential(
-                SwiGLU(embed_dim, int(2 / 3 * transition_factor * embed_dim), beta_is_learnable=True, bias=True),
-                nn.Dropout(p=transition_dropout),
-                nn.Linear(int(2 / 3 * transition_factor * embed_dim), embed_dim, bias=True),
+            SwiGLU(embed_dim, int(2 / 3 * transition_factor * embed_dim), beta_is_learnable=True, bias=True),
+            nn.Dropout(p=transition_dropout),
+            nn.Linear(int(2 / 3 * transition_factor * embed_dim), embed_dim, bias=True),
         )
         self.out_layer_norm = nn.LayerNorm(embed_dim)
 
@@ -132,6 +137,7 @@ class TransformerBlock(nn.Module):
         x = residual + self.residual_dropout_2(self.transition(x))
 
         return x, attn
+
 
 class MaskedLanguageModelHead(nn.Module):
     def __init__(self, embed_dim, alphabet_size):

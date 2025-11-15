@@ -5,12 +5,13 @@ import math
 
 from rinalmo.model.rope import RotaryPositionEmbedding
 
-from flash_attn import flash_attn_varlen_qkvpacked_func, flash_attn_qkvpacked_func
-from flash_attn.layers.rotary import RotaryEmbedding
+# from flash_attn import flash_attn_varlen_qkvpacked_func, flash_attn_qkvpacked_func
+# from flash_attn.layers.rotary import RotaryEmbedding
 
-from flash_attn.bert_padding import unpad_input, pad_input
+# from flash_attn.bert_padding import unpad_input, pad_input
 
 from einops import rearrange
+
 
 def dot_product_attention(q, k, v, attn_mask=None, key_pad_mask=None, dropout=None):
     c = q.shape[-1]
@@ -28,6 +29,7 @@ def dot_product_attention(q, k, v, attn_mask=None, key_pad_mask=None, dropout=No
 
     output = torch.matmul(attn, v)
     return output, attn
+
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, c_in, num_heads, attention_dropout=0.0, use_rot_emb=True, bias=False):
@@ -69,6 +71,7 @@ class MultiHeadAttention(nn.Module):
 
         return output, attn
 
+
 class MultiHeadSelfAttention(nn.Module):
     def __init__(self, c_in, num_heads, attention_dropout=0.0, use_rot_emb=True, bias=False):
         super().__init__()
@@ -78,10 +81,12 @@ class MultiHeadSelfAttention(nn.Module):
     def forward(self, x, attn_mask=None, key_pad_mask=None):
         return self.mh_attn(x, x, x, attn_mask, key_pad_mask)
 
+
 class FlashAttention(nn.Module):
     """
     Implement the scaled dot product attention with softmax.
     """
+
     def __init__(self, causal=False, softmax_scale=None, attention_dropout=0.0):
         """
         Args:
@@ -142,10 +147,12 @@ class FlashAttention(nn.Module):
                 return_attn_probs=return_attn_probs
             )
 
+
 class FlashMultiHeadSelfAttention(nn.Module):
     """
     Multi-head self-attention implemented using FlashAttention.
     """
+
     def __init__(self, embed_dim, num_heads, attention_dropout=0.0, causal=False, use_rot_emb=True, bias=False):
         super().__init__()
         assert embed_dim % num_heads == 0, "Embedding dimensionality must be divisible with number of attention heads!"
@@ -208,19 +215,19 @@ class FlashMultiHeadSelfAttention(nn.Module):
             seqlen = qkv.shape[1]
             x_unpad, indices, cu_seqlens, max_s = unpad_input(qkv, key_padding_mask)
             output_unpad = self.flash_self_attn(
-                    x_unpad, 
-                    cu_seqlens=cu_seqlens, 
-                    max_seqlen=max_s, 
-                    return_attn_probs=return_attn_probs
-                    )
+                x_unpad,
+                cu_seqlens=cu_seqlens,
+                max_seqlen=max_s,
+                return_attn_probs=return_attn_probs
+            )
             out = pad_input(rearrange(output_unpad, '... h d -> ... (h d)'), indices, batch_size, seqlen)
         else:
             output = self.flash_self_attn(
-                    qkv, 
-                    cu_seqlens=None, 
-                    max_seqlen=None, 
-                    return_attn_probs=return_attn_probs
-                    )
+                qkv,
+                cu_seqlens=None,
+                max_seqlen=None,
+                return_attn_probs=return_attn_probs
+            )
             out = rearrange(output, '... h d -> ... (h d)')
 
         out = self.out_proj(out)

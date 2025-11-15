@@ -4,6 +4,7 @@ import copy
 from rinalmo.data.alphabet import Alphabet
 from rinalmo.data.constants import *
 
+
 def model_config(name):
     c = copy.deepcopy(default_config)
 
@@ -32,24 +33,26 @@ def model_config(name):
         c.training.lr_scheduler.cosine_decay.eta_min = 1e-5
     else:
         raise ValueError("Invalid configuration name!")
-    
+
     assert not any_tokenizer_discrepancies(c), "Found discrepancies in tokenizer configuration!"
 
     return c
+
 
 def any_tokenizer_discrepancies(config):
     alphabet = Alphabet(**config['alphabet'])
 
     if alphabet.get_idx(MASK_TKN) != config['globals'].mask_tkn_idx:
         return True
-    
+
     if alphabet.get_idx(PAD_TKN) != config['globals'].pad_tkn_idx:
         return True
-    
+
     if len(alphabet) != config['globals'].alphabet_size:
         return True
-    
+
     return False
+
 
 embed_dim = mlc.FieldReference(480, field_type=int)
 
@@ -120,7 +123,7 @@ default_config = mlc.ConfigDict(
                 "transition_dropout": 0.0,
                 "residual_dropout": 0.1,
                 "transition_factor": 4,
-                "use_flash_attn": True,
+                "use_flash_attn": False,
             },
             "lm_mask_head": {
                 "embed_dim": embed_dim,
